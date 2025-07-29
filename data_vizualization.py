@@ -58,7 +58,7 @@ chart = alt.Chart(summary_df).mark_bar().encode(
 ).properties(
     title="Potential earnings at current prices if transacted now",
     width=800,
-    height=400
+    height=800
 )
 
 # If in Streamlit:

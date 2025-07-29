@@ -68,3 +68,14 @@ def format_gold(value):
     silver = (total_copper % 10000) // 100
     copper = total_copper % 100
     return f"{gold}g {silver}s {copper}c"
+
+
+def gold_to_float(price: float) -> tuple[int, int, int]:
+    gold = int(price)
+    silver = int((price * 100) % 100)
+    copper = int((price * 10000) % 100)
+    return gold, silver, copper
+
+
+def float_to_gold(gold: int, silver: int, copper: int) -> float:
+    return gold + silver / 100 + copper / 10000

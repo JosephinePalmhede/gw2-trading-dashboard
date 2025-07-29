@@ -8,12 +8,14 @@ from backend import (
     format_gold,
     create_all_items_file,
     load_tracked_item_ids,
-    save_tracked_item_ids
+    save_tracked_item_ids,
+    gold_to_float,
+    float_to_gold
 )
 from purchase_tracker import add_purchase, get_item_total, edit_purchase, delete_purchase
 
-# Auto-refresh every 160 seconds
-st_autorefresh(interval=160 * 1000, key="data_refresh")
+# Auto-refresh every 3 minutes
+st_autorefresh(interval=180 * 1000, key="data_refresh")
 
 st.set_page_config(page_title="GW2 Trading Post Dashboard", layout="wide")
 st.title("Guild Wars 2 Trading Post Dashboard")
@@ -45,37 +47,92 @@ if st.button("Refresh Item List"):
     create_all_items_file()
     st.rerun()
 
+st.markdown("---")
+
 # Main item display
 for item_id in ITEM_IDS:
     data = get_item_data(item_id)
+    total_qty, avg_price = get_item_total(item_id)
+    
     with st.container():
-        st.image(data["icon"], width=50)
-        st.markdown(f"### {data['name']}")
-        st.metric(label="Buy Price", value=format_gold(data["buy"]))
-        st.metric(label="Sell Price", value=format_gold(data["sell"]))
+        left_col, right_col = st.columns([1, 2])
 
-        if st.button("Remove Item", key=f"remove_{item_id}"):
-            ITEM_IDS.remove(item_id)
-            save_tracked_item_ids(ITEM_IDS)
-            st.rerun()
+        #item information
+        with left_col:
+            st.image(data["icon"], width=50)
+            st.markdown(f"### {data['name']}")
+            st.metric(label="Buy Price", value=format_gold(data["buy"]))
+            st.metric(label="Sell Price", value=format_gold(data["sell"]))
 
-        st.markdown("---")
+            if st.button("Remove Item", key=f"remove_{item_id}"):
+                ITEM_IDS.remove(item_id)
+                save_tracked_item_ids(ITEM_IDS)
+                st.rerun()
+
+        #chart
+        with right_col:
+            if total_qty > 0:
+                df = pd.DataFrame([{
+                    "Metric": "Cost Basis",
+                    "Value": avg_price * total_qty
+                }, {
+                    "Metric": "Market Value",
+                    "Value": total_qty * data["sell"] * 0.85
+                }])
+                chart = alt.Chart(df, title="Cost/Value Chart").mark_bar(size=40).encode(
+                    x=alt.X("Metric", sort=None),
+                    y=alt.Y("Value"),
+                    color=alt.condition(
+                        alt.datum.Metric == "Market Value",
+                        alt.value("green"),
+                        alt.value("orange")
+                    )
+                ).properties(height=430, width=400).interactive()
+                st.altair_chart(chart, use_container_width=True)
+
+        ## Control buttons
+
+        # Add purchase
         st.markdown("**Add Purchase**")
-        qty = st.number_input(f"Quantity {item_id}", min_value=1, step=1, key=f"qty_{item_id}")
-        price = st.number_input(f"Price per item {item_id} (in gold)", min_value=0.0, format="%.2f", key=f"price_{item_id}")
-        if st.button("Save Purchase", key=f"save_{item_id}"):
-            add_purchase(item_id, qty, price)
-            st.success("Saved!")
 
+        add_col1, add_col2, add_col3 = st.columns([2, 2, 1])
+        with add_col1:
+            qty = st.number_input(f"Quantity {data['name']}", min_value=1, step=1, key=f"qty_{item_id}")
+        with add_col2:
+            # Price input in gold/silver/copper format
+            col_gold, col_silver, col_copper = st.columns(3)
+            gold = col_gold.number_input(f"Gold", min_value=0, step=1, key=f"gold_{item_id}")
+            silver = col_silver.number_input(f"Silver", min_value=0, max_value=99, step=1, key=f"silver_{item_id}")
+            copper = col_copper.number_input(f"Copper", min_value=0, max_value=99, step=1, key=f"copper_{item_id}")
+
+        # Convert price input to float
+        price = float_to_gold(gold, silver, copper)
+
+        with add_col3:
+            if st.button("Save Purchase", key=f"save_{data['name']}"):
+                add_purchase(item_id, qty, price)
+                st.success("Saved!")
+
+        # Edit holdings
         st.markdown("**Edit/Delete Purchases**")
         purchases = get_item_total(item_id, full=True)
         for index, p in enumerate(purchases):
-            col1, col2, col3 = st.columns([2, 2, 1])
-            with col1:
+            edit_col1, edit_col2, edit_col3 = st.columns([2, 2, 1])
+            with edit_col1:
                 new_qty = st.number_input(f"Qty #{index}", value=p["quantity"], key=f"edit_qty_{item_id}_{index}")
-            with col2:
-                new_price = st.number_input(f"Price #{index}", value=p["price"], format="%.2f", key=f"edit_price_{item_id}_{index}")
-            with col3:
+            with edit_col2:
+                # Input as gold/silver/copper
+                edit_col1, edit_col2, edit_col3 = st.columns(3)
+                price_gold, price_silver, price_copper = gold_to_float(p["price"])
+
+                new_gold = edit_col1.number_input("Gold", min_value=0, value=price_gold, step=1, key=f"gold_edit_{item_id}_{index}")
+                new_silver = edit_col2.number_input("Silver", min_value=0, max_value=99, value=price_silver, step=1, key=f"silver_edit_{item_id}_{index}")
+                new_copper = edit_col3.number_input("Copper", min_value=0, max_value=99, value=price_copper, step=1, key=f"copper_edit_{item_id}_{index}")
+                
+                # Convert and store as float
+                new_price = float_to_gold(new_gold, new_silver, new_copper)
+
+            with edit_col3:
                 if st.button("Update", key=f"update_{item_id}_{index}"):
                     edit_purchase(item_id, index, new_qty, new_price)
                     st.success("Updated!")
@@ -86,7 +143,6 @@ for item_id in ITEM_IDS:
                     st.rerun()
 
         st.markdown("**Your Holdings**")
-        total_qty, avg_price = get_item_total(item_id)
         st.text(f"Owned: {total_qty} at avg {format_gold(avg_price)}")
 
         if total_qty > 0:
@@ -97,6 +153,7 @@ for item_id in ITEM_IDS:
             st.markdown(f"**Profit/Loss:** :{profit_color}[{format_gold(profit)}]")
 
         st.markdown("---")
+
 
 # Profit Summary Table and Chart
 st.header("Portfolio Summary")
@@ -125,12 +182,5 @@ if summary_data:
     df["Avg Price"] = df["Avg Price"].round(2)
     st.dataframe(df)
 
-    chart = alt.Chart(df).mark_bar().encode(
-        x=alt.X("Item", sort="-y"),
-        y="Profit",
-        color=alt.condition(alt.datum.Profit >= 0, alt.value("green"), alt.value("red"))
-    ).properties(title="Profit/Loss by Item", width=600)
-
-    st.altair_chart(chart, use_container_width=True)
 else:
     st.info("No data to display in profit summary.")

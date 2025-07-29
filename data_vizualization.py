@@ -56,7 +56,7 @@ chart = alt.Chart(summary_df).mark_bar().encode(
     ),
     tooltip=["Item", "Total Profit (g)", "Quantity", "Avg Purchase Price (g)", "Current Sell Price (g)"]
 ).properties(
-    title="Profit/Loss per Tracked Item",
+    title="Potential earnings at current prices if transacted now",
     width=800,
     height=400
 )

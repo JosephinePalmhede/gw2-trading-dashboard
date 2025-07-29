@@ -31,12 +31,3 @@ streamlit run app.py
 ## License
 
 MIT License
-
-
-
-git init
-git add .
-git commit -m "Initial commit of GW2 Trading Dashboard"
-git branch -M main
-git remote add origin https://github.com/YOUR_USERNAME/gw2-trading-dashboard.git
-git push -u origin main
